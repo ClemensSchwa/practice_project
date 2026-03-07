@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: #94a3b8; }
+
+    .search {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .search input {
+      flex: 1;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .search input:focus { border-color: #60a5fa; }
+
+    .search button {
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      border: none;
+      background: #3b82f6;
+      color: white;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .search button:hover { background: #2563eb; }
+
+    #status { color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem; min-height: 1.2em; }
+
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 480px;
+      display: none;
+    }
+
+    .card.visible { display: block; }
+
+    .location-name {
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .coord { font-size: 0.8rem; color: #64748b; margin-bottom: 1.5rem; }
+
+    .current {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #334155;
+    }
+
+    .temp-big { font-size: 3.5rem; font-weight: 700; line-height: 1; }
+
+    .current-details { display: flex; flex-direction: column; gap: 0.3rem; color: #94a3b8; font-size: 0.9rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .metric {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+    }
+
+    .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-value { font-size: 1.2rem; font-weight: 600; }
+
+    .forecast { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #334155; }
+    .forecast h2 { font-size: 0.85rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.8rem; }
+
+    .forecast-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .forecast-row:last-child { border-bottom: none; }
+    .forecast-day { color: #94a3b8; width: 90px; }
+    .forecast-range { color: #e2e8f0; }
+    .forecast-hi { color: #f8fafc; font-weight: 600; }
+    .forecast-lo { color: #64748b; }
+  </style>
+</head>
+<body>
+  <h1>Open-Meteo Weather</h1>
+
+  <div class="search">
+    <input id="city-input" type="text" placeholder="City name (e.g. Vienna)" />
+    <button onclick="search()">Search</button>
+  </div>
+
+  <div id="status">Enter a city to get started.</div>
+  <div class="card" id="card"></div>
+
+  <script>
+    const WMO = {
+      0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+      45: "Foggy", 48: "Icy fog",
+      51: "Light drizzle", 53: "Moderate drizzle", 55: "Dense drizzle",
+      61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
+      71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow",
+      80: "Slight showers", 81: "Moderate showers", 82: "Violent showers",
+      95: "Thunderstorm", 96: "Thunderstorm w/ hail", 99: "Thunderstorm w/ heavy hail"
+    };
+
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+    async function search() {
+      const city = document.getElementById("city-input").value.trim();
+      if (!city) return;
+      setStatus("Looking up location…");
+      document.getElementById("card").classList.remove("visible");
+
+      try {
+        const geo = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`
+        ).then(r => r.json());
+
+        if (!geo.results?.length) { setStatus("City not found. Try another name."); return; }
+        const { latitude, longitude, name, country } = geo.results[0];
+        await loadWeather(latitude, longitude, `${name}, ${country}`);
+      } catch (e) {
+        setStatus("Error fetching data. Check your connection.");
+      }
+    }
+
+    async function loadWeather(lat, lon, label) {
+      setStatus("Fetching weather…");
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weathercode` +
+        `&daily=weathercode,temperature_2m_max,temperature_2m_min` +
+        `&wind_speed_unit=kmh&timezone=auto&forecast_days=7`;
+
+      const data = await fetch(url).then(r => r.json());
+      const c = data.current;
+      const d = data.daily;
+
+      const forecastRows = d.time.slice(0, 7).map((dateStr, i) => {
+        const day = DAYS[new Date(dateStr).getDay()];
+        return `<div class="forecast-row">
+          <span class="forecast-day">${i === 0 ? "Today" : i === 1 ? "Tomorrow" : day}</span>
+          <span>${WMO[d.weathercode[i]] ?? "—"}</span>
+          <span class="forecast-range">
+            <span class="forecast-hi">${Math.round(d.temperature_2m_max[i])}°</span>
+            <span class="forecast-lo"> / ${Math.round(d.temperature_2m_min[i])}°</span>
+          </span>
+        </div>`;
+      }).join("");
+
+      document.getElementById("card").innerHTML = `
+        <div class="location-name">${label}</div>
+        <div class="coord">${lat.toFixed(3)}, ${lon.toFixed(3)}</div>
+        <div class="current">
+          <div class="temp-big">${Math.round(c.temperature_2m)}°C</div>
+          <div class="current-details">
+            <span>${WMO[c.weathercode] ?? "Unknown"}</span>
+            <span>Feels like ${Math.round(c.apparent_temperature)}°C</span>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="metric"><div class="metric-label">Humidity</div><div class="metric-value">${c.relative_humidity_2m}%</div></div>
+          <div class="metric"><div class="metric-label">Wind</div><div class="metric-value">${Math.round(c.wind_speed_10m)} km/h</div></div>
+        </div>
+        <div class="forecast">
+          <h2>7-Day Forecast</h2>
+          ${forecastRows}
+        </div>
+      `;
+
+      document.getElementById("card").classList.add("visible");
+      setStatus("");
+    }
+
+    document.getElementById("city-input").addEventListener("keydown", e => {
+      if (e.key === "Enter") search();
+    });
+  </script>
+</body>
+</html>
